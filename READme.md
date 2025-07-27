@@ -48,7 +48,7 @@ Follow these steps to install and prepare Chiron for use:
 
     
     git clone <https://github.com/eternal-blessing/CHIRON.git>
-    cd chiron
+    cd CHIRON
     
 
 2. **Create and activate a Python virtual environment to isolate dependencies:**
