@@ -1,4 +1,4 @@
-name: python CI 
+name: python CI
 
 on:
   push:
@@ -8,17 +8,13 @@ on:
 
 jobs:
   validate-environment:
-    name: Validate on ${{ matrix.os }}
+    name: Validate on ${{ matrix.os }} with Python ${{ matrix.python-version }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ["3.9", "3.10", "3.11"]
-        exclude:
-          # Exclude Python 3.8 on Windows due to known OpenCV issues
-          - os: windows-2022
-            python-version: "3.8"
 
     steps:
       - name: Checkout code
@@ -28,7 +24,14 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
-          cache: 'pip'
+
+      - name: Cache Pipenv
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pipenv
+          key: ${{ runner.os }}-pipenv-${{ hashFiles('Pipfile.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pipenv-
 
       - name: Install system dependencies (Linux)
         if: runner.os == 'Linux'
@@ -41,24 +44,20 @@ jobs:
         run: |
           brew install openblas
 
-      - name: Create virtual environment
-        run: python -m venv venv
+      - name: Install Pipenv
+        run: pip install pipenv
 
       - name: Install dependencies
         run: |
-          source venv/bin/activate
-          pip install --upgrade pip
-          pip install -e .[dev]
-          pip list
+          pipenv install --dev
+          pipenv graph
 
       - name: Verify critical packages
         run: |
-          source venv/bin/activate
-          python -c "import cv2; print(f'OpenCV: {cv2.__version__}')"
-          python -c "import mediapipe; print(f'MediaPipe: {mediapipe.__version__}')"
-          python -c "import pygame; print(f'PyGame: {pygame.__version__}')"
+          pipenv run python -c "import cv2; print(f'OpenCV: {cv2.__version__}')"
+          pipenv run python -c "import mediapipe; print(f'MediaPipe: {mediapipe.__version__}')"
+          pipenv run python -c "import pygame; print(f'PyGame: {pygame.__version__}')"
 
       - name: Run basic functionality test
         run: |
-          source venv/bin/activate
-          python -m pytest tests/test_environment.py -v
+          pipenv run pytest tests/test_environment.py -v
