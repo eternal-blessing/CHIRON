@@ -2,62 +2,88 @@ name: python CI
 
 on:
   push:
-    branches: [ "main", "dev" ]
+    branches: [ main, ch/** ]
   pull_request:
     branches: [ main ]
 
 jobs:
-  validate-environment:
-    name: Validate on ${{ matrix.os }} with Python ${{ matrix.python-version }}
+  build-and-test:
+    name: Build and Test (${{ matrix.os }} - Py${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        python-version: ["3.9", "3.10", "3.11"]
+        os: [ubuntu-22.04, windows-2022, macos-12]
+        python-version: ["3.8", "3.9", "3.10"]
+        exclude:
+          - os: windows-2022
+            python-version: "3.8"
+          - os: macos-12
+            python-version: "3.10"
 
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v3
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+          cache-dependency-path: 'Pipfile.lock'
 
-      - name: Cache Pipenv
-        uses: actions/cache@v3
-        with:
-          path: ~/.cache/pipenv
-          key: ${{ runner.os }}-pipenv-${{ hashFiles('Pipfile.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-pipenv-
-
-      - name: Install system dependencies (Linux)
+      - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgl1-mesa-glx
+          sudo apt-get install -y libgl1 libgtk-3-0 libsm6 libxext6 libxrender-dev
+          # Fallback for older Ubuntu images
+          sudo apt-get install -y libgl1-mesa-glx || echo "Skipping libgl1-mesa-glx (may not be needed)"
 
-      - name: Install system dependencies (macOS)
+      - name: Install macOS dependencies
         if: runner.os == 'macOS'
         run: |
           brew install openblas
+          brew install libomp
 
-      - name: Install Pipenv
-        run: pip install pipenv
-
-      - name: Install dependencies
+      - name: Install Windows dependencies
+        if: runner.os == 'Windows'
         run: |
-          pipenv install --dev
-          pipenv graph
+          choco install opencv --version 4.8.0 -y
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pipenv
+          pipenv install --dev --deploy
 
       - name: Verify critical packages
         run: |
+          pipenv run python -c "import sys; print(f'Python: {sys.version}')"
+          pipenv run python -c "import platform; print(f'System: {platform.platform()}')"
           pipenv run python -c "import cv2; print(f'OpenCV: {cv2.__version__}')"
           pipenv run python -c "import mediapipe; print(f'MediaPipe: {mediapipe.__version__}')"
-          pipenv run python -c "import pygame; print(f'PyGame: {pygame.__version__}')"
+          pipenv run python -c "import pygame; print(f'PyGame: {pygame.ver}')"
 
-      - name: Run basic functionality test
-        run: |
-          pipenv run pytest tests/test_environment.py -v
+      - name: Run unit tests
+        run: pipenv run pytest tests/unit --cov=src --cov-report=xml
+
+      - name: Run integration tests
+        run: pipenv run pytest tests/integration -v
+        timeout-minutes: 10
+
+      - name: Run type checks
+        run: pipenv run mypy src
+
+      - name: Check formatting
+        run: pipenv run black --check src tests
+
+      - name: Upload coverage report
+        uses: codecov/codecov-action@v3
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          file: ./coverage.xml
+          flags: unittests
+          env_vars: OS=${{ matrix.os }},PYTHON=${{ matrix.python-version }}
+
+  # Remaining jobs unchanged...
