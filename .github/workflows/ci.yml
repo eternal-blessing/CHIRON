@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-22.04, windows-2022, macos-12]
         python-version: ["3.9", "3.10", "3.11"]
         exclude:
           - os: windows-2022
@@ -85,5 +85,3 @@ jobs:
           file: ./coverage.xml
           flags: unittests
           env_vars: OS=${{ matrix.os }},PYTHON=${{ matrix.python-version }}
-
-  # Remaining jobs unchanged...
